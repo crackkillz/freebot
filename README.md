@@ -14,3 +14,6 @@ This Discord bot scrapes Craigslist for free items and wanted posts, looking for
 
    ```bash
    pip install requests beautifulsoup4 pandas discord.py
+
+   ```bash
+   python freebot.py
