@@ -1,58 +1,131 @@
-Craigslist Discord Bot README.md
-Overview
-This bot scrapes Craigslist for free items and wanted posts, then matches them based on similarity. It sends the results to a specified Discord channel. It uses Python libraries like requests, BeautifulSoup, difflib, csv, discord.py, pandas, and asyncio.
+import requests
+from bs4 import BeautifulSoup
+from difflib import SequenceMatcher
+import csv
+import discord
+from discord.ext import commands
+import pandas as pd
+from datetime import datetime
+import asyncio
 
-Prerequisites
-Python 3.6 or higher
-Discord account and a bot token
-Knowledge of Discord bot creation and management
-Installation
-Clone the Repository:
-Clone this repository to your local machine or download the files directly.
+# Define your Discord bot token (replace with your actual token)
+bot_token = "YOUR_BOT_TOKEN_PLACEHOLDER"
 
-Install Required Libraries:
-Run pip install requests beautifulsoup4 discord.py pandas to install the necessary Python libraries.
+# Create a Discord bot instance with intents
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-Discord Bot Token:
-Obtain a Discord bot token and replace YOUR_BOT_TOKEN_PLACEHOLDER in the script with your actual token.
+# Define placeholders for sensitive information
+CHANNEL_ID_PLACEHOLDER = "YOUR_CHANNEL_ID_PLACEHOLDER"
+FREE_SECTION_URL_PLACEHOLDER = "YOUR_FREE_SECTION_URL_PLACEHOLDER"
+WANTED_SECTION_URL_PLACEHOLDER = "YOUR_WANTED_SECTION_URL_PLACEHOLDER"
 
-Channel and URL Setup:
-Replace CHANNEL_ID_PLACEHOLDER, FREE_SECTION_URL_PLACEHOLDER, and WANTED_SECTION_URL_PLACEHOLDER with your Discord channel ID and Craigslist section URLs.
+def retrieve_page(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad responses
 
-Running the Bot
-Starting the Bot:
-Run the script using python your_script_name.py in your terminal or command prompt.
+        print(f"Successfully retrieved Craigslist page: {url}")
+        return BeautifulSoup(response.content, "html.parser")
 
-Bot in Action:
-Once the bot is running, it will scrape the specified Craigslist sections, find matches, and send the results to your Discord channel.
+    except requests.RequestException as e:
+        print(f"Failed to retrieve Craigslist page. Error: {e}")
+        return None
 
-CSV Logging:
-The bot logs the matches to a CSV file named matches.csv in the same directory.
+def scrape_craigslist_section(base_url, section_name):
+    url = f"{base_url}?s=0"
+    soup = retrieve_page(url)
 
-Features
-Scraping Craigslist:
-The bot scrapes Craigslist for free items and wanted posts using BeautifulSoup.
+    if soup is not None:
+        posts = []
+        for post in soup.select('li.cl-static-search-result'):
+            title = post.find("div", class_="title").text.strip()
+            link_element = post.find("a")
+            link = link_element['href'] if link_element and 'href' in link_element.attrs else None
+            posts.append((title, link, section_name))
 
-Finding Matches:
-It uses difflib.SequenceMatcher to compare titles of free and wanted posts for similarity.
+        print(f"Scraped Craigslist {section_name} Section")
+        print(f"{section_name} Posts:", posts)
 
-Discord Integration:
-Sends a summary and individual matches to a specified Discord channel.
+        return posts
+    else:
+        return []
 
-Error Handling:
-Includes basic error handling for web requests and Discord interactions.
+def find_matches_with_links(free_items, wanted_posts):
+    matches = []
 
-Customization
-Modify the command prefix, bot token, channel ID, and URLs directly in the script.
-Adjust the similarity threshold in find_matches_with_links function for matching logic.
-Change the message format sent to Discord in the send_results_to_discord function.
-Limitations
-The bot's efficiency depends on the structure of Craigslist's HTML, which might change.
-Currently, it does not support real-time monitoring; it needs to be run manually.
-Contributions
-Contributions to this project are welcome. Please follow standard coding practices and provide documentation for your changes.
+    for free_title, free_link, free_section in free_items:
+        for wanted_title, wanted_link, wanted_section in wanted_posts:
+            similarity = SequenceMatcher(None, free_title.lower(), wanted_title.lower()).ratio()
+            if similarity > 0.8:
+                matches.append((free_title, free_link, wanted_title, wanted_link, free_section, wanted_section))
+                print(f"Match found (Similarity: {similarity}):")
+                print(f"Free Item: {free_title}\nFree Item Link: {free_link or 'N/A'}")
+                print(f"Wanted Post: {wanted_title}\nWanted Post Link: {wanted_link or 'N/A'}\n")
 
-License
-This project is open-source and available under the MIT License.
+    return matches
 
-Note: This README is a guideline. Actual implementation might require adjustments based on your specific requirements and setup.
+async def send_results_to_discord(channel_id, free_items, wanted_posts, num_pages_to_scrape):
+    all_match_urls = find_matches_with_links(free_items, wanted_posts)
+
+    # Log matches to CSV only if there are matches
+    if all_match_urls:
+        with open("matches.csv", mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Free Title', 'Free Link', 'Wanted Title', 'Wanted Link', 'Free Section', 'Wanted Section'])
+            writer.writerows(all_match_urls)
+        print("Matches Logged to CSV")
+
+    # Read in the CSV
+    df = pd.read_csv('matches.csv')
+
+    # Send a summary message
+    summary_message = (
+        f"**Matches Found ({len(df.index)}):**\n"
+        f"Number of Free Items: {len(free_items)}\n"
+        f"Number of Wanted Posts: {len(wanted_posts)}\n"
+        f"Number of Pages Scraped: {num_pages_to_scrape}"
+    )
+
+    # Send the summary message to the Discord channel
+    channel = bot.get_channel(channel_id)
+    await channel.send(summary_message)
+
+    # Send each match as a separate message
+    for _, row in df.iterrows():
+        match_message = (
+            f"**Match Found!**\n"
+            f"Free Item: [{row['Free Title']}]({row['Free Link']})\n"
+            f"Wanted Post: [{row['Wanted Title']}]({row['Wanted Link']})"
+        )
+        await channel.send(match_message)
+
+    # Log the time the results were sent to Discord
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Results Sent to Discord at:", current_time)
+
+
+@bot.event
+async def on_ready():
+    print(f'We have logged in as {bot.user}')
+
+    # Set the Discord channel ID
+    channel_id = CHANNEL_ID_PLACEHOLDER
+
+    # Scrape Craigslist sections
+    free_items = scrape_craigslist_section(FREE_SECTION_URL_PLACEHOLDER, "Free")
+    wanted_posts = scrape_craigslist_section(WANTED_SECTION_URL_PLACEHOLDER, "Wanted")
+
+    if free_items and wanted_posts:
+        try:
+            await send_results_to_discord(channel_id, free_items, wanted_posts, num_pages_to_scrape=3)
+        except Exception as e:
+            print(f"Error during Discord message sending: {e}")
+
+# Run the Discord bot using asyncio
+async def main():
+    await bot.start(bot_token)
+
+if __name__ == '__main__':
+    asyncio.run(main())
