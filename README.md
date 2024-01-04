@@ -13,7 +13,7 @@ This Discord bot scrapes Craigslist for free items and wanted posts, matches the
 Clone the repository and install the required Python libraries:
 
 ```bash
-git clone [[repository-url]](https://github.com/crackkillz/freebot.git)
+git clone https://github.com/crackkillz/freebot.git
 cd freebot
 pip install requests beautifulsoup4 discord.py pandas
 ```
