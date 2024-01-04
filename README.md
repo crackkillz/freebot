@@ -1,4 +1,4 @@
-```markdown
+
 # Craigslist Discord Bot README
 
 ## Overview
